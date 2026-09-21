@@ -48,6 +48,7 @@
 #include "spdk_internal/lvolstore.h"
 
 #include "s3lvol/s3_build_info.h"
+#include "s3lvol/s3_cache.h"
 #include "s3lvol/s3_checkpoint.h"
 #include "s3lvol/s3_export.h"
 #include "s3lvol/s3_spawner.h"
@@ -315,6 +316,7 @@ struct rpc_create_lvstore {
 	char       *cache_bdev;
 	uint32_t    journal_size_mb;
 	uint32_t    wal_size_mb;
+	uint32_t    cache_hot_bufs;
 
 	/* Seconds between automatic checkpoints; 0 takes the default. Bounds how
 	 * much journal a crash has to replay. */
@@ -340,6 +342,7 @@ static const struct spdk_json_object_decoder rpc_create_lvstore_decoders[] = {
 	{"cache_bdev",   offsetof(struct rpc_create_lvstore, cache_bdev),   spdk_json_decode_string, true},
 	{"journal_size_mb", offsetof(struct rpc_create_lvstore, journal_size_mb), spdk_json_decode_uint32, true},
 	{"wal_size_mb",  offsetof(struct rpc_create_lvstore, wal_size_mb),  spdk_json_decode_uint32, true},
+	{"cache_hot_bufs", offsetof(struct rpc_create_lvstore, cache_hot_bufs), spdk_json_decode_uint32, true},
 	{"force",        offsetof(struct rpc_create_lvstore, force),        spdk_json_decode_bool,   true},
 	{"checkpoint_interval_sec", offsetof(struct rpc_create_lvstore, checkpoint_interval_sec), spdk_json_decode_uint32, true},
 };
@@ -375,7 +378,9 @@ static void
 rpc_rcow_create_lvstore(struct spdk_jsonrpc_request *request,
 			       const struct spdk_json_val *params)
 {
-	struct rpc_create_lvstore req = {0};
+	struct rpc_create_lvstore req = {
+		.cache_hot_bufs = S3_CACHE_HOT_BUFS_DEFAULT,
+	};
 	struct s3_lvs_opts opts = {0};
 	const struct s3_target *tgt;
 	const char *problem;
@@ -387,6 +392,13 @@ rpc_rcow_create_lvstore(struct spdk_jsonrpc_request *request,
 				    &req)) {
 		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS,
 						 "Invalid parameters");
+		goto cleanup;
+	}
+	if (req.cache_hot_bufs > S3_CACHE_HOT_BUFS_MAX) {
+		spdk_jsonrpc_send_error_response_fmt(
+			request, SPDK_JSONRPC_ERROR_INVALID_PARAMS,
+			"cache_hot_bufs must be at most %u",
+			S3_CACHE_HOT_BUFS_MAX);
 		goto cleanup;
 	}
 
@@ -459,6 +471,7 @@ rpc_rcow_create_lvstore(struct spdk_jsonrpc_request *request,
 	opts.cache_bdev_name = req.cache_bdev;
 	opts.journal_size_mb = req.journal_size_mb;
 	opts.wal_size_mb     = req.wal_size_mb;
+	opts.cache_hot_bufs  = req.cache_hot_bufs;
 	opts.checkpoint_interval_sec = req.checkpoint_interval_sec;
 
 	rc = s3lvol_lvstore_create(&opts, rpc_create_lvstore_cb, request);
@@ -496,6 +509,7 @@ struct rpc_attach_lvstore {
 	char *wal_bdev;
 	char *cache_bdev;
 	bool  force;
+	uint32_t cache_hot_bufs;
 
 	/* Not read back from the local device on purpose: the interval is a policy
 	 * of this process, not a property of the lvstore, so an attach may
@@ -519,6 +533,7 @@ static const struct spdk_json_object_decoder rpc_attach_lvstore_decoders[] = {
 	{"cache_bdev", offsetof(struct rpc_attach_lvstore, cache_bdev), spdk_json_decode_string, true},
 	{"force",      offsetof(struct rpc_attach_lvstore, force),      spdk_json_decode_bool,   true},
 	{"checkpoint_interval_sec", offsetof(struct rpc_attach_lvstore, checkpoint_interval_sec), spdk_json_decode_uint32, true},
+	{"cache_hot_bufs", offsetof(struct rpc_attach_lvstore, cache_hot_bufs), spdk_json_decode_uint32, true},
 };
 
 static void
@@ -569,7 +584,9 @@ static void
 rpc_rcow_attach_lvstore(struct spdk_jsonrpc_request *request,
 			       const struct spdk_json_val *params)
 {
-	struct rpc_attach_lvstore req = {0};
+	struct rpc_attach_lvstore req = {
+		.cache_hot_bufs = S3_CACHE_HOT_BUFS_DEFAULT,
+	};
 	struct s3_lvs_opts opts = {0};
 	const struct s3_target *tgt;
 	int rc;
@@ -579,6 +596,13 @@ rpc_rcow_attach_lvstore(struct spdk_jsonrpc_request *request,
 				    &req)) {
 		spdk_jsonrpc_send_error_response(request, SPDK_JSONRPC_ERROR_INVALID_PARAMS,
 						 "Invalid parameters");
+		goto cleanup;
+	}
+	if (req.cache_hot_bufs > S3_CACHE_HOT_BUFS_MAX) {
+		spdk_jsonrpc_send_error_response_fmt(
+			request, SPDK_JSONRPC_ERROR_INVALID_PARAMS,
+			"cache_hot_bufs must be at most %u",
+			S3_CACHE_HOT_BUFS_MAX);
 		goto cleanup;
 	}
 
@@ -597,6 +621,7 @@ rpc_rcow_attach_lvstore(struct spdk_jsonrpc_request *request,
 	opts.wal_bdev_name   = req.wal_bdev;
 	opts.cache_bdev_name = req.cache_bdev;
 	opts.force           = req.force;
+	opts.cache_hot_bufs  = req.cache_hot_bufs;
 	opts.checkpoint_interval_sec = req.checkpoint_interval_sec;
 
 	rc = s3lvol_lvstore_attach(&opts, rpc_attach_lvstore_cb, request);
@@ -1718,6 +1743,24 @@ rpc_rcow_get_lvstores(struct spdk_jsonrpc_request *request,
 		spdk_json_write_named_uint64(w, "rmw_count", stats.rmw_count);
 		spdk_json_write_named_uint64(w, "allocated_chunks",
 					     stats.allocated_chunks);
+		spdk_json_write_named_uint64(w, "dest_whole_gets",
+					     stats.dest_whole_gets);
+		spdk_json_write_named_uint64(w, "dest_coalesced_reads",
+					     stats.dest_coalesced_reads);
+		spdk_json_write_named_uint64(w, "dest_exact_fallbacks",
+					     stats.dest_exact_fallbacks);
+		spdk_json_write_named_uint64(w, "dest_submit_cache_hits",
+					     stats.dest_submit_cache_hits);
+		spdk_json_write_named_uint64(w, "dest_submit_cache_retries",
+					     stats.dest_submit_cache_retries);
+		spdk_json_write_named_uint64(w, "dest_submit_fill_starts",
+					     stats.dest_submit_fill_starts);
+		spdk_json_write_named_uint64(w, "dest_submit_fill_joins",
+					     stats.dest_submit_fill_joins);
+		spdk_json_write_named_uint64(w, "dest_direct_gets",
+					     stats.dest_direct_gets);
+		spdk_json_write_named_uint64(w, "dest_direct_get_bytes",
+					     stats.dest_direct_get_bytes);
 		/* Checkpoint state. journal_used vs journal_capacity is what tells
 		 * an operator whether the lvstore is heading for the -ENOSPC that
 		 * an untruncatable journal ends in. */
@@ -1753,6 +1796,10 @@ rpc_rcow_get_lvstores(struct spdk_jsonrpc_request *request,
 		if (stats.cache_attached) {
 			spdk_json_write_named_uint64(w, "cache_hits",
 						     stats.cache_hits);
+			spdk_json_write_named_uint64(w, "cache_ram_hits",
+						     stats.cache_ram_hits);
+			spdk_json_write_named_uint64(w, "cache_disk_hits",
+						     stats.cache_disk_hits);
 			spdk_json_write_named_uint64(w, "cache_misses",
 						     stats.cache_misses);
 			spdk_json_write_named_uint64(w, "cache_hits_declined",
@@ -1765,6 +1812,8 @@ rpc_rcow_get_lvstores(struct spdk_jsonrpc_request *request,
 						     stats.cache_evictions);
 			spdk_json_write_named_uint64(w, "cache_bytes_served",
 						     stats.cache_bytes_served);
+			spdk_json_write_named_uint64(w, "cache_ram_bytes_served",
+						     stats.cache_ram_bytes_served);
 			spdk_json_write_named_uint64(w, "cache_bytes_populated",
 						     stats.cache_bytes_populated);
 			spdk_json_write_named_uint64(w, "cache_slots_total",
@@ -1773,6 +1822,49 @@ rpc_rcow_get_lvstores(struct spdk_jsonrpc_request *request,
 						     stats.cache_slots_resident);
 			spdk_json_write_named_uint64(w, "cache_bytes_resident",
 						     stats.cache_bytes_resident);
+			spdk_json_write_named_uint64(w, "cache_hot_slots_total",
+						     stats.cache_hot_slots_total);
+			spdk_json_write_named_uint64(w, "cache_hot_slots_resident",
+						     stats.cache_hot_slots_resident);
+			spdk_json_write_named_uint64(w, "cache_hot_evictions",
+						     stats.cache_hot_evictions);
+			spdk_json_write_named_uint64(w, "cache_object_hits",
+						     stats.cache_object_hits);
+			spdk_json_write_named_uint64(w, "cache_object_misses",
+						     stats.cache_object_misses);
+			spdk_json_write_named_uint64(w, "cache_object_hits_declined",
+						     stats.cache_object_hits_declined);
+			spdk_json_write_named_uint64(w, "cache_object_populates",
+						     stats.cache_object_populates);
+			spdk_json_write_named_uint64(
+				w, "cache_object_populates_dropped",
+				stats.cache_object_populates_dropped);
+			spdk_json_write_named_uint64(
+				w, "cache_object_populates_failed",
+				stats.cache_object_populates_failed);
+			spdk_json_write_named_uint64(w, "cache_object_evictions",
+						     stats.cache_object_evictions);
+			spdk_json_write_named_uint64(w, "cache_object_bytes_served",
+						     stats.cache_object_bytes_served);
+			spdk_json_write_named_uint64(
+				w, "cache_object_bytes_populated",
+				stats.cache_object_bytes_populated);
+			spdk_json_write_named_uint64(
+				w, "cache_object_slots_resident",
+				stats.cache_object_slots_resident);
+			spdk_json_write_named_uint64(w, "cache_object_alias_hits",
+						     stats.cache_object_alias_hits);
+			spdk_json_write_named_uint64(w, "cache_object_alias_misses",
+						     stats.cache_object_alias_misses);
+			spdk_json_write_named_uint64(
+				w, "cache_object_alias_registers",
+				stats.cache_object_alias_registers);
+			spdk_json_write_named_uint64(
+				w, "cache_object_alias_evictions",
+				stats.cache_object_alias_evictions);
+			spdk_json_write_named_uint64(
+				w, "cache_object_aliases_resident",
+				stats.cache_object_aliases_resident);
 		}
 		spdk_json_write_object_end(w);
 
@@ -3021,7 +3113,7 @@ SPDK_RPC_REGISTER("rcow_get_build_info", rpc_rcow_get_build_info,
  * rcow_get_bdev         report the host device path it landed on
  *
  * Placement is derived rather than chosen by the caller: the subsystem is
- * crc32c(name) % RCOW_NUM_SUBSYS and the nsid is the lowest free slot in it.
+ * crc32c(name) % RCOW_NUM_SUBSYS and the nsid is the longest-idle free slot.
  * Both can be overridden, which is what recovery does -- it has to reproduce the
  * previous layout exactly rather than let it be recomputed.
  * ========================================================================== */
@@ -3321,6 +3413,11 @@ active_bdev_attach(const char *device_name, uint32_t want_subsys,
 			goto done;
 		}
 		nsid = want_nsid;
+		/* Reserve explicit placements in the same in-memory generation table
+		 * used by auto-allocation. The registry entry is written only after
+		 * NVMf attach completes, so without this touch a concurrent automatic
+		 * attach can choose the same still-unrecorded slot. */
+		s3lvol_active_note_nsid(subsys, nsid);
 	} else {
 		nsid = s3lvol_active_alloc_nsid(subsys);
 		if (nsid == 0) {
@@ -3924,6 +4021,7 @@ struct get_bdev_entry {
 	char     uuid[SPDK_UUID_STRING_LEN];
 	uint32_t subsys;
 	uint32_t nsid;
+	uint32_t readahead_kb;
 	/* Empty until resolved. */
 	char     path[GET_BDEV_PATH_MAX];
 };
@@ -3992,12 +4090,34 @@ get_bdev_resolve_all(struct get_bdev_ctx *ctx)
 	return pending;
 }
 
+static uint32_t
+get_bdev_readahead_kb(const struct get_bdev_entry *e)
+{
+	struct s3lvol_lvstore *lvs;
+	uint32_t base_kb = s3lvol_nvmf_readahead_kb();
+
+	if (base_kb != RCOW_DEFAULT_READ_AHEAD_KB) {
+		return base_kb;
+	}
+
+	/* Active names are global, but duplicate inactive names may exist in two
+	 * loaded lvstores. Match the registry's UUID as well so one such duplicate
+	 * cannot hide the active imported volume from the density policy. */
+	for (lvs = s3lvol_lvstore_first(); lvs; lvs = s3lvol_lvstore_next(lvs)) {
+		struct spdk_lvol *lvol = s3lvol_lvol_find(lvs, e->name);
+
+		if (lvol && strcmp(lvol->uuid_str, e->uuid) == 0) {
+			return s3lvol_import_readahead_kb(lvol, base_kb);
+		}
+	}
+	return base_kb;
+}
+
 static void
 get_bdev_write_one(struct spdk_json_write_ctx *w, const struct get_bdev_entry *e)
 {
 	char nqn[SPDK_NVMF_NQN_MAX_LEN + 1];
 	const char *leaf;
-	uint32_t ra_kb;
 
 	s3lvol_nvmf_subsys_nqn(e->subsys, nqn, sizeof(nqn));
 
@@ -4007,6 +4127,7 @@ get_bdev_write_one(struct spdk_json_write_ctx *w, const struct get_bdev_entry *e
 	spdk_json_write_named_string(w, "nqn", nqn);
 	spdk_json_write_named_uint32(w, "subsys", e->subsys);
 	spdk_json_write_named_uint32(w, "nsid", e->nsid);
+	spdk_json_write_named_uint32(w, "readahead_kb", e->readahead_kb);
 
 	/* Empty rather than absent when the wait ran out: the field is always
 	 * there so a caller can test it without special-casing, and an empty
@@ -4020,17 +4141,16 @@ get_bdev_write_one(struct spdk_json_write_ctx *w, const struct get_bdev_entry *e
 		 * path at all. rcow_active_bdev cannot do it -- it answers before
 		 * the host has even noticed the namespace. The startup script
 		 * tunes devices too (rcow_tune_readahead), which covers a replay
-		 * where nobody asks; the two agree on the value and each is
-		 * idempotent, so whichever runs first is fine.
+		 * where nobody asks; get_bdev reports this per-volume decision to
+		 * that script, so the two agree and whichever runs first is fine.
 		 *
 		 * Cheap on the repeat calls a caller may still make:
 		 * set_readahead reads the current value and returns without
 		 * writing when it already matches, and never overwrites a value
 		 * somebody set deliberately. */
 		leaf = strrchr(e->path, '/');
-		ra_kb = s3lvol_nvmf_readahead_kb();
-		if (leaf && leaf[1] != '\0' && ra_kb > 0) {
-			s3lvol_nvmf_set_readahead(leaf + 1, ra_kb);
+		if (leaf && leaf[1] != '\0' && e->readahead_kb > 0) {
+			s3lvol_nvmf_set_readahead(leaf + 1, e->readahead_kb);
 		}
 	}
 
@@ -4203,6 +4323,8 @@ rpc_rcow_get_bdev(struct spdk_jsonrpc_request *request,
 		memcpy(ctx->entries[0].uuid, e->uuid, sizeof(ctx->entries[0].uuid));
 		ctx->entries[0].subsys = e->subsys;
 		ctx->entries[0].nsid   = e->nsid;
+		ctx->entries[0].readahead_kb =
+			get_bdev_readahead_kb(&ctx->entries[0]);
 		ctx->count = 1;
 	} else {
 		i = 0;
@@ -4214,6 +4336,8 @@ rpc_rcow_get_bdev(struct spdk_jsonrpc_request *request,
 			       sizeof(ctx->entries[i].uuid));
 			ctx->entries[i].subsys = e->subsys;
 			ctx->entries[i].nsid   = e->nsid;
+			ctx->entries[i].readahead_kb =
+				get_bdev_readahead_kb(&ctx->entries[i]);
 		}
 		ctx->count = i;
 	}
