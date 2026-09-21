@@ -129,10 +129,10 @@ All four compute lines (Big Pod / installer / bootstrap / PVM) are native `apps/
 
 #### Big Pod: `cube-node`
 
-- `hostNetwork: false` (Pod network); native `apps/v1` DaemonSet.
+- `hostNetwork: true` (host network by default; `cubeNode.hostNetwork: false` opts into the Pod network); native `apps/v1` DaemonSet.
 - **initContainer**: `wait-node-prep` (**exits 0** when the fingerprint matches; not a long-running sidecar).
-- Image / resource / Pod template changes **recreate** the Big Pod (PodIP/netns change; existing sandboxes interrupt). See [Upgrade](./upgrade.md).
-- **NodeID** = `spec.nodeName`; **Endpoint** = `status.podIP`.
+- Image / resource / Pod template changes **recreate** the Big Pod. Sandbox tap devices and cubevs hooks live in the Pod netns: on the host network they survive that, on the Pod network they do not. See [Upgrade](./upgrade.md).
+- **NodeID** = `spec.nodeName`; **Endpoint** = `status.podIP` (the node IP on the host network).
 - toolbox **whole tree** hostPath: `/usr/local/services/cubetoolbox`.
 
 | Container | Image | Responsibility |
@@ -246,7 +246,7 @@ Main validations:
 - `configureClusterDNS=true` requires `cubeProxy.domain`.
 - compute-only requires `externalControlPlane.masterEndpoint`.
 - When `pvmHostKernel.enabled=true`, `placement.pvm` must include `allow-pvm-bootstrap`, and it **must not** be written under `placement.compute`.
-- `security.hostNetwork` has been removed; cube-node is fixed to Pod network.
+- `security.hostNetwork` has been removed; cube-node's mode is `cubeNode.hostNetwork` (default true = host network).
 
 Scheduling: control plane uses `placement.controlPlane`; `cube-node` / installer / bootstrap use `placement.compute`; `cube-node-pvm` uses `placement.pvm`. Chart-managed containers get `TZ` injected via `global.timezone` (default `Asia/Shanghai`).
 
@@ -413,6 +413,8 @@ Does not install built-in Master / API / MySQL / Redis / MinIO / WebUI; by defau
 | `cubeProxy.configureClusterDNS` | `true` | Whether to write cluster CoreDNS |
 | `cubeNode.dns.sandbox.followNodeDns` | `true` | guest follows node DNS |
 | `cubeNode.pvmGuestKernel.enabled` | `true` | Whether first-install default prefers PVM guest |
+| `cubeNode.hostNetwork` | `true` | Host network; on the Pod network a Pod recreate breaks every sandbox's networking on the node |
+| `cubeNode.hostNetworkChangeAck` | `false` | One-time acknowledgement for the network-mode preflight Hook |
 | `bootstrap.pvmHostKernel.enabled` | `true` | host kernel bootstrap (may reboot nodes) |
 | `bootstrap.pvmHostKernel.startupGate.enabled` | `true` | Hard NoSchedule node taint gate when PVM is not ready |
 | `bootstrap.pvmHostKernel.bootArgs` | `nopti pti=off` | Current `kvm_pvm` does not support host KPTI |
