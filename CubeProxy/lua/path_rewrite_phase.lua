@@ -8,6 +8,9 @@ local utils = require "utils"
 local sb = require "sandbox_backend"
 local state = require "sandbox_state"
 local request_host = require "request_host"
+local metrics = require "metrics"
+
+metrics.start_current_request()
 
 local uri = ngx.var.uri or ""
 local ins_id, container_port, rest = uri:match("^/sandbox/([%w_%-]+)/(%d+)(/?.*)$")

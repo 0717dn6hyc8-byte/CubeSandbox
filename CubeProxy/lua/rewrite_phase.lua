@@ -2,6 +2,9 @@ local utils = require "utils"
 local sb = require "sandbox_backend"
 local state = require "sandbox_state"
 local request_host = require "request_host"
+local metrics = require "metrics"
+
+metrics.start_current_request()
 
 -- Parse Host: <container_port>-<sandbox_id>.<domain> e.g. 49983-7c8fbcd45ffe450fb8f7fb223ad45507.cube.app
 -- Returns container_port, ins_id (sandbox / instance id), or nil, nil on failure.

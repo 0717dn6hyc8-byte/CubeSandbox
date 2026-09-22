@@ -9,6 +9,7 @@ set -u
 
 GLOBAL_CONF_PATH="${CUBE_PROXY_GLOBAL_CONF_PATH:-/usr/local/openresty/nginx/conf/global/global.conf}"
 RESOLVER_INCLUDE_PATH="${CUBE_PROXY_RESOLVER_INCLUDE_PATH:-/usr/local/openresty/nginx/conf/includes/resolver.inc}"
+NGINX_PREFIX="${NGINX_PREFIX:-/usr/local/openresty/nginx}"
 
 die() {
   echo "$(date -Iseconds) FATAL: $*" >&2
@@ -230,8 +231,13 @@ prepare_resolver_include() {
 main() {
   prepare_resolver_include || exit 1
 
+  local metrics_listen="${CUBE_PROXY_METRICS_LISTEN:-127.0.0.1:18082}"
+  local rendered_nginx_conf="${NGINX_PREFIX}/conf/nginx.metrics.conf"
+  sed "s#__CUBE_PROXY_METRICS_LISTEN__#${metrics_listen}#g" \
+    "${NGINX_PREFIX}/conf/nginx.conf" > "${rendered_nginx_conf}"
+
   /usr/sbin/crond
-  exec /usr/local/openresty/nginx/sbin/nginx
+  exec /usr/local/openresty/nginx/sbin/nginx -c "${rendered_nginx_conf}"
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
