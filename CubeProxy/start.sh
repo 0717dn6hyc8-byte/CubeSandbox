@@ -9,6 +9,7 @@ set -u
 
 GLOBAL_CONF_PATH="${CUBE_PROXY_GLOBAL_CONF_PATH:-/usr/local/openresty/nginx/conf/global/global.conf}"
 RESOLVER_INCLUDE_PATH="${CUBE_PROXY_RESOLVER_INCLUDE_PATH:-/usr/local/openresty/nginx/conf/includes/resolver.inc}"
+NGINX_CONF_PATH="${CUBE_PROXY_NGINX_CONF_PATH:-/usr/local/openresty/nginx/conf/nginx.conf}"
 
 die() {
   echo "$(date -Iseconds) FATAL: $*" >&2
@@ -227,8 +228,23 @@ prepare_resolver_include() {
   render_resolver_include "${resolver_list}" || return 1
 }
 
+render_metrics_listen() {
+  local listen="${CUBE_PROXY_METRICS_LISTEN:-127.0.0.1:18082}"
+  local tmp="${NGINX_CONF_PATH}.tmp"
+
+  [[ -n "${listen}" ]] \
+    || { die "CUBE_PROXY_METRICS_LISTEN must not be empty"; return 1; }
+  [[ -f "${NGINX_CONF_PATH}" ]] \
+    || { die "nginx config not found: ${NGINX_CONF_PATH}"; return 1; }
+
+  sed "s|__CUBE_PROXY_METRICS_LISTEN__|${listen}|g" "${NGINX_CONF_PATH}" > "${tmp}" \
+    || { rm -f "${tmp}"; die "failed to render metrics listen into ${NGINX_CONF_PATH}"; return 1; }
+  mv -f "${tmp}" "${NGINX_CONF_PATH}"
+}
+
 main() {
   prepare_resolver_include || exit 1
+  render_metrics_listen || exit 1
 
   /usr/sbin/crond
   exec /usr/local/openresty/nginx/sbin/nginx
