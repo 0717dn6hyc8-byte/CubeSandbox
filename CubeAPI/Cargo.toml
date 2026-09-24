@@ -44,6 +44,7 @@ anyhow = "1"
 
 # ── Logging / tracing ─────────────────────────────────────────────────────
 tracing = "0.1"
+prometheus = "0.13"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # OpenTelemetry integration (stub, wire up later)
 # tracing-opentelemetry = "0.22"

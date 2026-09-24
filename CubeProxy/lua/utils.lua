@@ -8,6 +8,8 @@ end
 local _M = new_tab(0, 10)
 _M._VERSION = '0.01'
 
+local metrics = require "metrics"
+
 -- HTTP status → gRPC status code (google.rpc.Code). Used on the plaintext
 -- gRPC ingress so native clients get trailers instead of JSON over HTTP 4xx/5xx.
 local GRPC_STATUS = {
@@ -58,6 +60,7 @@ end
         - body:   response body string (JSON); ignored on the gRPC path
 --]]
 function _M.respond_with(self, status, body)
+    metrics.finish_current_request(status)
     if self:is_grpc_request() then
         local gs = GRPC_STATUS[status] or 2 -- UNKNOWN
         local msg = GRPC_MESSAGE[status] or "unknown"

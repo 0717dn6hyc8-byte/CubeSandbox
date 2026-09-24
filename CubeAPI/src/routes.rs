@@ -18,7 +18,7 @@ use tower_http::{
 };
 
 use crate::{
-    handlers::{health, sandboxes, snapshots, templates, volumes},
+    handlers::{health, metrics, sandboxes, snapshots, templates, volumes},
     middleware::{auth::unified_auth, rate_limit::rate_limit},
     state::AppState,
 };
@@ -70,6 +70,7 @@ pub fn build_router(state: AppState) -> Router {
 fn build_e2b_router(state: &AppState, auth_configured: bool) -> Router<AppState> {
     Router::new()
         .route("/health", get(health::health))
+        .route("/metrics", get(metrics::metrics))
         .merge(build_sandbox_routes(state, auth_configured))
         .merge(build_template_routes(state, auth_configured))
         .merge(build_volume_routes(state, auth_configured))
@@ -356,6 +357,20 @@ mod tests {
             server.get("/templates").await.status_code(),
             StatusCode::NOT_FOUND
         );
+    }
+
+    #[tokio::test]
+    async fn metrics_route_is_public_and_renders_prometheus_text() {
+        let server = test_server().await;
+
+        let response = server.get("/metrics").await;
+        response.assert_status_ok();
+        assert!(response
+            .header("content-type")
+            .to_str()
+            .expect("content type should be valid")
+            .contains("text/plain; version=0.0.4"));
+        assert!(response.text().is_empty());
     }
 
     #[tokio::test]

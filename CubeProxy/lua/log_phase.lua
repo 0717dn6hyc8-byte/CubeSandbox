@@ -1,5 +1,8 @@
 -- log_phase.lua — runs after the response is sent.
 --
+local metrics = require "metrics"
+metrics.finish_current_request()
+
 -- 1. Records the access time for the access log (preserved).
 -- 2. Stamps the per-sandbox "last active" timestamp into a worker-shared
 --    lua dict. Cube Lifecycle Manager (CLM) polls /admin/last_active to learn
