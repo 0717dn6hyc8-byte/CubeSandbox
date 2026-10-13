@@ -740,11 +740,7 @@ export default function TemplateDetailPage() {
         ) : isFailed404 ? (
           <div className="space-y-3">
             <p className="text-sm text-destructive">{t('buildFailed')}</p>
-            <p className="text-xs text-muted-foreground">
-              {t('buildFailedDeleteHint', {
-                defaultValue: '该模板构建失败，无法查看详情，但你可以将其删除。',
-              })}
-            </p>
+            <p className="text-xs text-muted-foreground">{t('buildFailedDeleteHint')}</p>
             {showDeleteConfirm ? (
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground">{t('delete.confirmDesc')}</p>
@@ -763,7 +759,7 @@ export default function TemplateDetailPage() {
                 </div>
                 {deleteMutation.isError && (
                   <p className="text-xs text-destructive">
-                    {formatDeleteError(deleteMutation.error)}
+                    {formatDeleteError(deleteMutation.error, t)}
                   </p>
                 )}
               </div>
@@ -1085,7 +1081,9 @@ export default function TemplateDetailPage() {
               </Button>
             </div>
             {deleteMutation.isError && (
-              <p className="text-xs text-destructive">{formatDeleteError(deleteMutation.error)}</p>
+              <p className="text-xs text-destructive">
+                {formatDeleteError(deleteMutation.error, t)}
+              </p>
             )}
           </div>
         ) : (
