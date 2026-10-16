@@ -152,10 +152,10 @@ export default withMermaid(defineConfig({
           { text: 'Home', link: '/' },
           { text: 'Guide', link: '/guide/introduction' },
           { text: 'Architecture', link: '/architecture/overview' },
-          { text: 'Developer', link: '/dev/' },
           {
             text: 'Community',
             items: [
+              { text: 'Developer', link: '/dev/' },
               { text: 'Roadmap', link: '/guide/roadmap' },
               { text: 'Cube 100 Program', link: '/guide/cube100' },
               { text: 'Contributing', link: 'https://github.com/tencentcloud/CubeSandbox/blob/master/CONTRIBUTING.md' }
@@ -163,6 +163,7 @@ export default withMermaid(defineConfig({
           },
           { text: 'Blog', link: '/blog/' },
           { text: 'Changelog', link: '/changelog/' },
+          { text: 'QualityStatus', link: '/guide/quality-status' },
           { text: 'Contributors', link: '/contributors' },
           { text: 'About us', link: '/about-us' }
         ],
@@ -280,7 +281,7 @@ export default withMermaid(defineConfig({
                 { text: 'Sandbox Resource Metrics', link: '/guide/resource-metrics' },
                 { text: 'Sandbox Logs', link: '/guide/sandbox-logs' },
                 { text: 'Performance Benchmark', link: '/guide/performance-benchmark' },
-                { text: 'Quality Status', link: '/guide/quality-status' }
+                { text: 'QualityStatus', link: '/guide/quality-status' }
               ]
             },
             {
@@ -371,10 +372,10 @@ export default withMermaid(defineConfig({
           { text: '首页', link: '/zh/' },
           { text: '指南', link: '/zh/guide/introduction' },
           { text: '架构', link: '/zh/architecture/overview' },
-          { text: '开发者', link: '/zh/dev/' },
           {
             text: '社区',
             items: [
+              { text: '开发者', link: '/zh/dev/' },
               { text: '路线图', link: '/zh/guide/roadmap' },
               { text: 'Cube 100 计划', link: '/zh/guide/cube100' },
               { text: '参与贡献', link: 'https://github.com/tencentcloud/CubeSandbox/blob/master/CONTRIBUTING_zh.md' }
@@ -382,6 +383,7 @@ export default withMermaid(defineConfig({
           },
           { text: '博客', link: '/zh/blog/' },
           { text: '更新日志', link: '/zh/changelog/' },
+          { text: '质量状态', link: '/zh/guide/quality-status' },
           { text: '贡献者', link: '/zh/contributors' },
           { text: '关于我们', link: '/zh/about-us' }
         ],

@@ -1,5 +1,7 @@
 ---
 title: Quality Status
+sidebar: false
+aside: false
 ---
 
 <script setup>
@@ -10,13 +12,9 @@ import { data } from '../quality-status.data.js'
 
 ## Data Source
 
-This page loads the latest public nightly status from the Tencent Cloud COS JSON object at `https://cubesandbox-1253970226.cos.ap-singapore.myqcloud.com/page-data/quality-status.json`.
+This page reads only the latest public nightly status from `https://cubesandbox-1253970226.cos.ap-singapore.myqcloud.com/page-data/quality-status.json` and the night-by-night history from `https://cubesandbox-1253970226.cos.ap-singapore.myqcloud.com/page-data/quality-status-history.json`.
 
-To override the source for another deployment, configure `VITE_QUALITY_STATUS_JSON_URL` or `QUALITY_STATUS_JSON_URL`.
-
-Browser-side refresh requires the COS object to allow cross-origin `GET` requests from the documentation domain. The docs build remains offline-safe and only embeds local preview data when `QUALITY_STATUS_JSON_PATH` is set.
-
-For local preview, set `QUALITY_STATUS_JSON_PATH` to a JSON file with the same public schema.
+Browser-side refresh requires the COS object to allow cross-origin `GET` requests from the documentation domain.
 
 Only aggregate nightly E2E and performance data should be published. Do not include internal environment IDs, run IDs, logs, credentials, or private Web UI links.
 
@@ -43,9 +41,53 @@ The public JSON object should contain the following top-level fields:
       "url_zh": "https://cubesandbox.com/zh/blog/posts/2026-06-01-cubesandbox-perf-benchmark"
     },
     "counts": { "critical": 0, "warning": 1, "similar": 8, "improved": 2 },
-    "metrics": [{ "label": "3.2 Sandbox Create Latency", "current_text": "1.24s", "baseline_text": "1.31s", "delta_pct": -5.3, "verdict": "improved" }]
+    "thresholds": { "similar_pct": 5, "warning_pct": 5, "critical_pct": 10 },
+    "sections": [{ "key": "3.2", "title": "3.2 Cold-Start Latency and Concurrency Scaling", "status": "passed" }],
+    "metrics": [{
+      "key": "3.2-c1-create-avg",
+      "section": "3.2",
+      "label": "3.2 c=1 create avg",
+      "unit": "ms",
+      "better": "lower",
+      "baseline": 47.8,
+      "baseline_text": "47.8 ms",
+      "current": 40.4,
+      "current_text": "40.4 ms",
+      "delta_pct": -15.5,
+      "verdict": "improved"
+    }]
   }
 }
 ```
 
-The status page picks the baseline link from the current locale. The Chinese page prefers `baseline.url_zh`; the English page prefers `baseline.url` or `baseline.url_en`. If the JSON contains only one URL, the page rewrites known public site and GitHub docs paths (`cubesandbox.com/guide/...` ↔ `/zh/guide/...`, and GitHub `docs/blog/posts/...` ↔ `docs/zh/blog/posts/...`).
+`e2e.modules` on the latest object is an array. `performance.thresholds.similar_pct` draws the sparkline band, and `performance.sections[].key` groups metrics. A nested `performance.comparison` object is accepted for `counts`, `metrics`, `thresholds`, `sections`, and `note`; fields missing there fall back to `performance`.
+
+The history object is separate:
+
+```json
+{
+  "generatedAt": "2026-10-16T09:33:00+08:00",
+  "nights": [{
+    "date": "2026-10-16",
+    "commit": "5741deb433b7e2b9c9d2dcadb1c87214de74bd24",
+    "status": "passed",
+    "e2e": {
+      "status": "passed",
+      "tests": { "total": 316, "passed": 290, "failed": 0, "errors": 0, "skipped": 26 },
+      "modules": {
+        "lifecycle": { "total": 32, "passed": 32, "failed": 0, "errors": 0, "skipped": 0 }
+      }
+    },
+    "performance": {
+      "status": "critical",
+      "counts": { "critical": 1, "warning": 0, "similar": 0, "improved": 0 },
+      "values": { "3.2-c1-create-avg": 40.4 },
+      "worst": { "label": "3.2 c=1 create avg", "delta_pct": 12.0 }
+    }
+  }]
+}
+```
+
+`nights[].e2e.modules` is an object keyed by module name, not an array. `nights[].performance.values` is keyed by `metrics[].key` and feeds the sparklines. `status: "no_run"` is a night with no scheduled run. The page sorts `nights` by `date` ascending before drawing the wall, the streak, and the trends.
+
+The status page picks the baseline link from the current locale. The Chinese page prefers `baseline.url_zh`; the English page prefers `baseline.url` or `baseline.url_en`. If the JSON contains only one URL, the page adds or removes a `/zh` prefix on `cubesandbox.com` paths, and rewrites GitHub `docs/blog/posts/...` to or from `docs/zh/blog/posts/...`.
