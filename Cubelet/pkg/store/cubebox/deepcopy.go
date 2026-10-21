@@ -141,12 +141,23 @@ func (cb *CubeBox) DeepCopy() *CubeBox {
 
 func (m Metadata) DeepCopy() Metadata {
 	copied := Metadata{
-		ID:           m.ID,
-		Name:         m.Name,
-		SandboxID:    m.SandboxID,
-		Namespace:    m.Namespace,
-		CreatedAt:    m.CreatedAt,
-		InstanceType: m.InstanceType,
+		ID:                      m.ID,
+		Name:                    m.Name,
+		SandboxID:               m.SandboxID,
+		Namespace:               m.Namespace,
+		CreatedAt:               m.CreatedAt,
+		InstanceType:            m.InstanceType,
+		RestartCount:            m.RestartCount,
+		LastRestartAt:           m.LastRestartAt,
+		LastSuccessfulRestartAt: m.LastSuccessfulRestartAt,
+		LastFailedRestartAt:     m.LastFailedRestartAt,
+		LastExitCode:            m.LastExitCode,
+		LastExitReason:          m.LastExitReason,
+		RestartState:            m.RestartState,
+		NextRestartAt:           m.NextRestartAt,
+		StatusSeq:               m.StatusSeq,
+		DestroyFailCount:        m.DestroyFailCount,
+		OriginalRequest:         append([]byte(nil), m.OriginalRequest...),
 	}
 
 	if m.Annotations != nil {
@@ -208,12 +219,14 @@ func (c *Container) DeepCopy() *Container {
 	}
 
 	copied := &Container{
-		Metadata:      c.Metadata.DeepCopy(),
-		IP:            c.IP,
-		IsDebugStdout: c.IsDebugStdout,
-		IsPod:         c.IsPod,
-		Snapshotter:   c.Snapshotter,
-		SnapshotKey:   c.SnapshotKey,
+		Metadata:        c.Metadata.DeepCopy(),
+		IP:              c.IP,
+		IsDebugStdout:   c.IsDebugStdout,
+		IsPod:           c.IsPod,
+		RequestIndex:    c.RequestIndex,
+		RequestIndexSet: c.RequestIndexSet,
+		Snapshotter:     c.Snapshotter,
+		SnapshotKey:     c.SnapshotKey,
 	}
 
 	if c.Status != nil {
