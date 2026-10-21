@@ -29,6 +29,8 @@ NETWORK_DNS_ALLOW = "network_dns_allow"
 NETWORK_ALWAYS_DENIED = "network_always_denied"
 # CubeEgress L7 rules: inject, first-match, deny, TLS MITM, SNI/host.
 NETWORK_L7_EGRESS = "network_l7_egress"
+# Sandbox access to a service bound on the node IP (direct and via CubeEgress).
+NETWORK_NODE_LOCAL = "network_node_local"
 # Template CubeNetworkConfig merged with per-create network options.
 NETWORK_TEMPLATE_MERGE = "network_template_merge"
 PLATFORM_LIFECYCLE = "platform_lifecycle"
@@ -69,6 +71,7 @@ CUBESANDBOX_CAPABILITIES = frozenset(
         NETWORK_DNS_ALLOW,
         NETWORK_ALWAYS_DENIED,
         NETWORK_L7_EGRESS,
+        NETWORK_NODE_LOCAL,
         NETWORK_TEMPLATE_MERGE,
         NETWORK_DYNAMIC_UPDATE,
         PLATFORM_LIFECYCLE,
