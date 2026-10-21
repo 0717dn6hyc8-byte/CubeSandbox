@@ -64,7 +64,7 @@
     "memoryHint": "MiB, e.g. 2000.",
     "env": "Environment variables",
     "envHint": "One per line, format KEY=VALUE.",
-    "allowInternetAccess": "Allow internet access",
+    "forbidInternetAccess": "Forbid internet access",
     "advanced": {
       "show": "Show advanced options",
       "hide": "Hide advanced options"

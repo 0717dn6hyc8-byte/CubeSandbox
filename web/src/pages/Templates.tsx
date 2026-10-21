@@ -38,7 +38,7 @@ interface CreateFormState {
   cpu: string;
   memory: string;
   envVars: string;
-  allowInternet: boolean;
+  forbidInternet: boolean;
   // advanced
   useS3Backend: boolean;
   networkType: string;
@@ -64,7 +64,7 @@ const INITIAL_FORM: CreateFormState = {
   cpu: '',
   memory: '',
   envVars: '',
-  allowInternet: false,
+  forbidInternet: false,
   useS3Backend: false,
   networkType: '',
   nodes: '',
@@ -134,7 +134,7 @@ function buildCreateBody(state: CreateFormState): Record<string, unknown> {
   setNum('cpu', state.cpu);
   setNum('memory', state.memory);
   setList('env', state.envVars);
-  if (state.allowInternet) body.allowInternetAccess = true;
+  if (state.forbidInternet) body.allowInternetAccess = false;
 
   if (state.useS3Backend) body.backend = 's3';
   setStr('networkType', state.networkType);
@@ -341,15 +341,15 @@ function CreateTemplateModal({ onClose }: CreateModalProps) {
             <p className="text-xs text-muted-foreground">{t('create.envHint')}</p>
           </div>
 
-          {/* allow-internet */}
+          {/* forbid-internet */}
           <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
               type="checkbox"
               className="h-4 w-4 rounded border"
-              checked={form.allowInternet}
-              onChange={(e) => update('allowInternet', e.target.checked)}
+              checked={form.forbidInternet}
+              onChange={(e) => update('forbidInternet', e.target.checked)}
             />
-            <span className="text-sm">{t('create.allowInternetAccess')}</span>
+            <span className="text-sm">{t('create.forbidInternetAccess')}</span>
           </label>
 
           {/* advanced toggle */}
@@ -369,7 +369,6 @@ function CreateTemplateModal({ onClose }: CreateModalProps) {
 
             {showAdvanced && (
               <div className="mt-3 space-y-4">
-
                 {/* network + nodes */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
