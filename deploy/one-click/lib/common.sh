@@ -2918,6 +2918,66 @@ EOF
   exit 1
 }
 
+# Print one key from an os-release file (quotes stripped); missing prints nothing.
+host_os_release_field() {
+  local key="$1"
+  local release="${2:-/etc/os-release}"
+  local line value
+  [[ -r "${release}" ]] || return 0
+  line="$(grep -E "^${key}=" "${release}" | head -n 1 || true)"
+  value="${line#"${key}"=}"
+  value="${value#\"}"
+  value="${value%\"}"
+  printf '%s\n' "${value}"
+}
+
+# True when ID or ID_LIKE names OpenCloudOS.
+host_is_opencloudos() {
+  local release="${1:-/etc/os-release}"
+  local id like
+  id="$(host_os_release_field ID "${release}")"
+  like="$(host_os_release_field ID_LIKE "${release}")"
+  case " ${id} ${like} " in
+    *opencloudos*) return 0 ;;
+  esac
+  return 1
+}
+
+# die_yum_docker_packages_missing <packages> [release]: report a failed yum
+# install. OpenCloudOS ships docker-compose only in EPOL, not AppStream (#1959).
+die_yum_docker_packages_missing() {
+  local packages="$1"
+  local release="${2:-/etc/os-release}"
+  printf '[one-click] ERROR: failed to install %s with yum.\n' "${packages}" >&2
+  if host_is_opencloudos "${release}"; then
+    cat >&2 <<'EOF'
+[one-click]   A common cause on OpenCloudOS: docker comes from moby in
+[one-click]   AppStream, while docker-compose is published only in EPOL.
+[one-click]   If that is the cause here, enable EPOL and rerun this installer:
+[one-click]     sudo dnf install -y epol-release
+EOF
+    printf '[one-click]     sudo dnf install -y %s\n' "${packages}" >&2
+    cat >&2 <<'EOF'
+[one-click]   If docker-compose is still missing, the EPOL mirror does not contain it.
+[one-click]   Check with: dnf repolist; rpm -q epol-release
+EOF
+  else
+    cat >&2 <<'EOF'
+[one-click]   The packages were not found in the enabled repositories, or the
+[one-click]   package manager returned an error. Install them manually, then
+[one-click]   rerun this installer.
+EOF
+  fi
+  exit 1
+}
+
+# yum_install_docker_or_die <package>...: install via yum, or abort with the
+# Docker-specific hint. Do not reuse for other packages.
+yum_install_docker_or_die() {
+  local packages="$*"
+  yum install -y "$@" || die_yum_docker_packages_missing "${packages}"
+}
+
 install_docker() {
   reject_snap_docker
   if command -v docker >/dev/null 2>&1; then
@@ -2932,7 +2992,7 @@ install_docker() {
       apt-get install -y -qq docker.io docker-compose
       ;;
     yum)
-      yum install -y docker docker-compose
+      yum_install_docker_or_die docker docker-compose
       ;;
   esac
   systemctl enable docker && systemctl start docker
@@ -2954,7 +3014,7 @@ install_docker_compose() {
       apt-get update -qq && apt-get install -y -qq docker-compose
       ;;
     yum)
-      yum install -y docker-compose
+      yum_install_docker_or_die docker-compose
       ;;
   esac
   if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
