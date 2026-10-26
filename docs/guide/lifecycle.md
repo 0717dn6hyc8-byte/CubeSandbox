@@ -290,6 +290,47 @@ The rejection travels through the following chain to reach the client: `Cubelet 
 - This is a **node-level setting** — different nodes can use different ratios to accommodate heterogeneous hardware or tiered pools.
 - When a large batch of sandboxes on a single node wakes up simultaneously and exceeds node capacity, the control plane returns 409 with precise quota numbers. For sandboxes on the S3 backend, the scheduler can fall back to another compatible node instead — see [Cross-Node Snapshots](./cross-node-snapshot.md) for the conditions and scheduler rules.
 
+## Restart after exit
+
+A create request can set `restartPolicy`. The meaning matches Kubernetes `restartPolicy`: a restart is triggered by the exit of the sandbox's main process (the init process of the main container) or by a failed liveness probe, and the unit of restart is the whole sandbox (one microVM), not a process inside it.
+
+| Value | Behavior |
+|-------|----------|
+| `Never` (default) | Do not restart after exit |
+| `OnFailure` | Restart after a non-zero exit, OOM, sandbox crash, or a failed liveness probe |
+| `Always` | Restart after every exit, including a clean one, and after a failed liveness probe |
+
+### Backoff and restart limit
+
+A restart keeps the disk, the network, and the sandbox ID, then cold-starts. Memory is not kept.
+
+Repeated failures wait 10 seconds, then double, capped at 300 seconds; after 10 minutes of stability the restart count resets. The restart limit is `restartBackoff.maxRestarts` (default `0` means unlimited); a global cap can be set with `cubelet_conf.max_restarts_cap` (once set, even `0` is tightened to that cap). After the limit the sandbox stops restarting and is not brought up again, but it still counts toward the node's `MvmNum` quota until idle timeout or an explicit destroy.
+
+### Liveness probe
+
+Put a liveness probe on the create request. When the request has none and the image has envd (port `49983` exposed), the node probes `GET /health`. Images without envd are not probed, so they are not restarted by mistake. `Never` combined with a probe is rejected with HTTP 400: a probe that can never restart would only kill the sandbox.
+
+### Restart status
+
+`GET /sandboxes/<id>` and the list endpoint return `restartStatus`, a separate object from `state`: `state` answers "where is the sandbox in its lifecycle", while `restartStatus` answers "where is the restart state machine, and why did it stop". Once the container exits on its own, `state` only reports `unknown`; this object is what distinguishes a clean exit, a crash, and a give-up.
+
+It does not change `state`, and it only appears when the policy is `OnFailure` / `Always` or the sandbox has exited; a default `Never` sandbox that has never exited has no such object.
+
+`restartState` takes these values (capitalized; this is not the same enum as the lowercase `state`). In the table, "main process" means the init process of the main container:
+
+| Value | Meaning |
+|-------|---------|
+| `Running` | The restart state machine is idle: creation succeeded or the last restart succeeded. **It does not mean the sandbox is running**; check `state` for that |
+| `Restarting` | Rebuilding: destroy the old VM, then cold-start a new one |
+| `BackOff` | Exited and waiting for the backoff to elapse; `nextRestartAt` is the next attempt |
+| `GaveUp` | Reached `maxRestarts`, or a rebuild/destroy hit an unrecoverable failure; no more retries |
+| `Succeeded` | The main process exited cleanly (code 0) and the policy declines to restart (`Never`, or `OnFailure` with code 0) |
+| `Failed` | The main process exited abnormally and the policy declines to restart (any failure under `Never`) |
+
+`Restarting` and `BackOff` are transient states in the restart flow; `GaveUp`, `Succeeded`, and `Failed` are terminal: the sandbox will not be brought up automatically again. `Always` never stops at `Succeeded` / `Failed`: it keeps restarting; if `maxRestarts` is finite, it enters `GaveUp` once the limit is reached.
+
+Auto-pause is skipped during these two transient states; idle timeout still applies, and a restart operation does not reset the idle timer (idle time is based on [client activity](#what-counts-as-activity)). The object also carries `restartCount`, `lastExitCode`, `lastExitReason`, `lastRestartAt`, and similar fields for diagnosing exits.
+
 ## Next Steps
 
 - [Templates Overview](./templates.md) — sandboxes boot from templates; the template's build also shapes cold-start cost.

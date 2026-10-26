@@ -566,9 +566,11 @@ type CubeletConf struct {
 	DestroyConcurentLimit int64                `yaml:"destroy_concurent_limit"`
 	ExposedPortList       []string             `yaml:"exposed_port_list"`
 	EnableExposedPort     bool                 `yaml:"enable_exposed_port"`
-	DisableRedisProxyPort bool                 `yaml:"disable_redis_proxy_port"`
-	MaxDelayInSecond      int64                `yaml:"max_delay_in_second"`
-	BackoffRetryDelay     time.Duration        `yaml:"backoff_retry_delay"`
+	// MaxRestartsCap clamps restart_backoff.max_restarts. 0 means no cap.
+	MaxRestartsCap        int32         `yaml:"max_restarts_cap"`
+	DisableRedisProxyPort bool          `yaml:"disable_redis_proxy_port"`
+	MaxDelayInSecond      int64         `yaml:"max_delay_in_second"`
+	BackoffRetryDelay     time.Duration `yaml:"backoff_retry_delay"`
 }
 
 type GrpcConf struct {

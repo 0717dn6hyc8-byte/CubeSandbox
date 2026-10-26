@@ -29,6 +29,8 @@ NETWORK_DNS_ALLOW = "network_dns_allow"
 NETWORK_ALWAYS_DENIED = "network_always_denied"
 # CubeEgress L7 rules: inject, first-match, deny, TLS MITM, SNI/host.
 NETWORK_L7_EGRESS = "network_l7_egress"
+# Sandbox access to a service bound on the node IP (direct and via CubeEgress).
+NETWORK_NODE_LOCAL = "network_node_local"
 # Template CubeNetworkConfig merged with per-create network options.
 NETWORK_TEMPLATE_MERGE = "network_template_merge"
 PLATFORM_LIFECYCLE = "platform_lifecycle"
@@ -37,6 +39,8 @@ VOLUME_PLUGIN = "volume_plugin"
 AUTH_SIMPLE_KEY = "auth_simple_key"
 # E2B-compatible `mcp` create option served by the in-sandbox mcp-gateway.
 MCP_GATEWAY = "mcp_gateway"
+# Node-local restart policy (Never / OnFailure / Always) and restartStatus.
+RESTART_POLICY = "restart_policy"
 
 COMMON_CAPABILITIES = frozenset(
     {LIFECYCLE, COMMANDS, FILESYSTEM, FILESYSTEM_EXTENDED, RUN_CODE}
@@ -69,6 +73,7 @@ CUBESANDBOX_CAPABILITIES = frozenset(
         NETWORK_DNS_ALLOW,
         NETWORK_ALWAYS_DENIED,
         NETWORK_L7_EGRESS,
+        NETWORK_NODE_LOCAL,
         NETWORK_TEMPLATE_MERGE,
         NETWORK_DYNAMIC_UPDATE,
         PLATFORM_LIFECYCLE,
@@ -77,6 +82,7 @@ CUBESANDBOX_CAPABILITIES = frozenset(
         AUTH_SIMPLE_KEY,
         NETWORK_L7_CUSTOM_PORT,
         MCP_GATEWAY,
+        RESTART_POLICY,
     }
 )
 

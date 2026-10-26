@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2026 Tencent. All rights reserved.
 
-import { api, ops, setTokens, clearTokens } from '@/lib/api';
+import { api, apiWithHeaders, ops, setTokens, clearTokens } from '@/lib/api';
 import type { components } from './generated/schema';
 
 export type ClusterOverviewDto = components['schemas']['ClusterOverview'];
@@ -41,6 +41,8 @@ export interface TemplateDetail extends TemplateSummary {
   createRequest?: unknown;
   networkType?: string | null;
   allowInternetAccess?: boolean | null;
+  /** CoW backend (xfs|s3). CubeMaster returns `backend`, falling back to `storage_backend`. Empty/absent means the historical xfs path. */
+  backend?: string | null;
 }
 
 export interface TemplateCompatSummary {
@@ -165,6 +167,10 @@ function mapTemplateDetail(dto: TemplateDetailDto): TemplateDetail {
     networkType: (dto as unknown as { networkType?: string }).networkType ?? null,
     allowInternetAccess:
       (dto as unknown as { allowInternetAccess?: boolean }).allowInternetAccess ?? null,
+    backend:
+      (dto as unknown as { backend?: string }).backend?.trim() ||
+      (dto as unknown as { storageBackend?: string }).storageBackend?.trim() ||
+      null,
     displayName:
       dto.aliases?.[0]?.trim() ||
       (dto as unknown as { displayName?: string }).displayName?.trim() ||
@@ -214,12 +220,29 @@ const DEFAULT_RESUME_BODY: SandboxResumeRequest = {
 };
 
 export const sandboxApi = {
-  list: (params?: {
+  list: async (params?: {
     metadata?: string;
     state?: RunningSandbox['state'];
     nextToken?: string;
     limit?: number;
-  }) => api<ListedSandboxDto[]>('/v2/sandboxes', { params }).then((items) => items.map(mapSandbox)),
+  }) => {
+    // `GET /v2/sandboxes` paginates through the `x-next-token` response
+    // header rather than the body. Follow the cursor until the backend stops
+    // advertising another page so callers that want the full list (the
+    // dashboard does) are not silently truncated to the first page.
+    const items: ListedSandboxDto[] = [];
+    let nextToken = params?.nextToken;
+    for (;;) {
+      const { data, headers } = await apiWithHeaders<ListedSandboxDto[]>('/v2/sandboxes', {
+        params: { ...params, nextToken },
+      });
+      items.push(...data);
+      const token = headers.get('x-next-token');
+      if (!token) break;
+      nextToken = token;
+    }
+    return items.map(mapSandbox);
+  },
   get: (id: string) => api<SandboxDetailDto>(`/sandboxes/${id}`).then(mapSandboxDetail),
   kill: (id: string) => api<void>(`/sandboxes/${id}`, { method: 'DELETE' }),
   pause: (id: string) => api<void>(`/sandboxes/${id}/pause`, { method: 'POST' }),
@@ -249,6 +272,8 @@ export const templateApi = {
   create: (body: {
     templateID?: string;
     image: string;
+    alias?: string;
+    backend?: string;
     instanceType?: string;
     writableLayerSize?: string;
     exposedPorts?: number[];

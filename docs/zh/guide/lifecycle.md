@@ -290,6 +290,47 @@ resume rejected by paused_resource_release_ratio policy: need 1024MB > quota 512
 - 此项为**节点级配置**，不同节点可以设置不同的比值，灵活应对异构硬件或分池部署的需求。
 - 当节点上一大批沙箱同时被唤醒、单节点无法承载时，控制面会返回 409 并给出具体配额数字。对使用 S3 后端的沙箱，调度器可以回退到其它兼容节点恢复——跨机条件与调度规则见[跨机快照](./cross-node-snapshot.md)。
 
+## 进程退出后的重启
+
+创建沙箱时可以带 `restartPolicy`。语义和 Kubernetes 的 `restartPolicy` 一样：重启由沙箱主进程（主容器的 init 进程）退出或存活探针失败触发，单位是整台沙箱（一台 microVM），不是沙箱里的某个进程。
+
+| 取值 | 行为 |
+|------|------|
+| `Never`（默认） | 退出后不重启 |
+| `OnFailure` | 非 0 退出、OOM、沙箱崩溃，或存活探针失败时重启 |
+| `Always` | 任何退出都重启，包括正常退出；存活探针失败也会重启 |
+
+### 退避与重启上限
+
+重启会保留磁盘、网络和沙箱 ID，再冷启动一次；内存不保留。
+
+连续失败从 10 秒开始退避，每次加倍，最长 300 秒；运行满 10 分钟视为稳定，重启计数清零。重启次数上限由 `restartBackoff.maxRestarts` 控制，默认 `0` 表示不限；集群可以用 `cubelet_conf.max_restarts_cap` 设全局上限，配置后，`0`（不限）也会被收紧到该值。达到上限后不再重启，沙箱不再自动拉起，但仍计入节点 `MvmNum` 配额，直到空闲超时或被显式销毁。
+
+### 存活探针
+
+存活探针写在创建请求里。没有探针、且镜像带 envd（暴露 `49983`）时，节点会默认请求 `GET /health`。没有 envd 的镜像不会被探测，避免误重启。`Never` 配存活探针会被拒绝，返回 HTTP 400：探测永远不可能触发重启，只会把沙箱杀掉。
+
+### 查询重启状态
+
+`GET /sandboxes/<id>` 和列表接口会返回 `restartStatus`，它是 `state` 之外的独立对象：`state` 回答"沙箱在生命周期哪一站"，`restartStatus` 回答"重启状态机走到哪、为什么停下"。容器自行退出后，`state` 只会报 `unknown`，只有靠这个对象才能分清正常退出、崩溃和放弃重启。
+
+它不改变 `state`，只在策略为 `OnFailure` / `Always`、或沙箱发生过退出时出现；默认 `Never` 且从未退出过的沙箱没有它。
+
+`restartState` 的取值如下（首字母大写，和 `state` 的小写枚举不是一套）。表中的"主进程"指主容器的 init 进程：
+
+| 取值 | 含义 |
+|------|------|
+| `Running` | 重启状态机空闲：创建成功或最近一次重启成功。**不代表沙箱正在运行**，是否在运行看 `state` |
+| `Restarting` | 正在重建：销毁旧 VM，再冷启动新 VM |
+| `BackOff` | 已退出，等待退避结束；`nextRestartAt` 是下次尝试时间 |
+| `GaveUp` | 达到 `maxRestarts`，或重建/销毁遇到不可恢复的失败，不再重试 |
+| `Succeeded` | 主进程正常退出（退出码 0），策略决定不重启（`Never`，或 `OnFailure` 且退出码为 0） |
+| `Failed` | 主进程异常退出，策略决定不重启（`Never` 下的任何失败） |
+
+`Restarting`、`BackOff` 是重启流程中的瞬时态；`GaveUp`、`Succeeded`、`Failed` 是终态，不会再自动拉起。`Always` 不会停在 `Succeeded` / `Failed`：它会一直重启；如果设了 `maxRestarts`，达到上限后进入 `GaveUp`。
+
+这两个瞬时态期间不会自动暂停；但空闲超时照常生效，重启操作也不会重置空闲计时（空闲按[客户端活动](#何时算-活跃)计算）。对象里还有 `restartCount`、`lastExitCode`、`lastExitReason`、`lastRestartAt` 等字段，可用于定位退出原因。
+
 ## 下一步
 
 - [模板概览](./templates.md) —— 沙箱基于模板启动，模板的构建过程也会影响首次冷启动开销。
