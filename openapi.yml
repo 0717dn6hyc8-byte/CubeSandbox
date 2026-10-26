@@ -1832,11 +1832,7 @@ components:
       type: object
       required:
       - status
-      - sandboxes
       properties:
-        sandboxes:
-          type: integer
-          minimum: 0
         status:
           type: string
     ListedSandbox:
