@@ -450,7 +450,7 @@ impl Container {
             .map_err(|e| format!("deserialize spec failed:{}", e))?;
 
         let proc = spec.mut_process();
-        proc.set_noNewPrivileges(false);
+        // Keep the caller's no_new_privs: the Cubelet already defaults it to false.
         proc.set_selinuxLabel(String::new());
 
         let res = spec.mut_linux().mut_resources();
